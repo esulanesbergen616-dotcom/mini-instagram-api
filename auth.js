@@ -7,7 +7,6 @@ const router = express.Router();
 const ACCESS_SECRET = 'your_access_secret_key';
 const REFRESH_SECRET = 'your_refresh_secret_key';
 
-// 1. Тіркелу (Register)
 router.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
     
@@ -33,14 +32,13 @@ router.post('/register', async (req, res) => {
     }
 });
 
-// 2. Логин
 router.post('/login', (req, res) => {
     const { email, password } = req.body;
 
     db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
         if (err) {
             console.error('Логин SQL қатесі:', err.message);
-            return res.status(500).json(err);
+            return res.status(500).json({ error: err.message });
         }
         
         if (results.length === 0 || !(await bcrypt.compare(password, results[0].password_hash))) {
