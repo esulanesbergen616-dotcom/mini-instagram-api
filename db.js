@@ -1,53 +1,35 @@
-const mysql = require('mysql2');
+const { Pool } = require('pg');
 
-// Деректерді тікелей жазамыз (Hardcode), Render баптауларына тәуелді болмау үшін
-const db = mysql.createConnection({
-    host: 'mysql-15344f45-mini-instagram.j.aivencloud.com',
-    user: 'avnadmin',
-    password: 'AVNS_gNybVLa9gu6m6y3CvMy',
-    database: 'defaultdb',
-    port: 13574,
+// Төмендегі тырнақшаның ішіне Render-ден көшірген External Database URL-ді қойыңыз
+const connectionString = 'postgresql://admin:HLC5X8pNwIeIQpkp1vXwFcSR2fQlFksG@dpg-d77r3aoule4c73dforag-a.frankfurt-postgres.render.com/instagram_db_04zl';
+
+const pool = new Pool({
+    connectionString: connectionString,
     ssl: {
         rejectUnauthorized: false
     }
 });
 
-db.connect((err) => {
+pool.connect((err) => {
     if (err) {
-        console.error('MySQL-ге қосылу қатесі (Тікелей):', err.message);
-        return;
+        return console.error('PostgreSQL-ге қосылу қатесі:', err.stack);
     }
-    console.log('Aiven MySQL базасына ТІКЕЛЕЙ сәтті қосылды!');
+    console.log('RENDER POSTGRESQL БАЗАСЫНА СӘТТІ ҚОСЫЛДЫ!');
+    
+    const createTables = `
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            password_hash VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    `;
 
-    // Пайдаланушылар кестесі
-    const createUsersTable = `
-    CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(255) NOT NULL,
-        email VARCHAR(255) NOT NULL UNIQUE,
-        password_hash VARCHAR(255) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );`;
-
-    // Токендер кестесі
-    const createTokensTable = `
-    CREATE TABLE IF NOT EXISTS refresh_tokens (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
-        jti VARCHAR(255) NOT NULL,
-        expires_at DATETIME NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );`;
-
-    db.query(createUsersTable, (err) => {
-        if (err) console.error('Users кесте қатесі:', err.message);
+    pool.query(createTables, (err) => {
+        if (err) console.error('Кесте құру қатесі:', err.message);
         else console.log('Users кестесі дайын.');
-    });
-
-    db.query(createTokensTable, (err) => {
-        if (err) console.error('Tokens кесте қатесі:', err.message);
-        else console.log('Refresh Tokens кестесі дайын.');
     });
 });
 
-module.exports = db;
+module.exports = pool;
