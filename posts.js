@@ -3,18 +3,9 @@ const router = express.Router();
 const db = require('./db');
 const authenticateToken = require('./authMiddleware');
 
-// --- ДЕРЕКТЕР БАЗАСЫ ҚҰРЫЛЫМЫН АВТОМАТТЫ ҚҰРУ ---
+// --- ДЕРЕКТЕР БАЗАСЫ ҚҰРЫЛЫМЫН ЖАҢАРТУ ---
 const createTablesQuery = `
-    -- Пайдаланушылар кестесі (егер жоқ болса)
-    CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) UNIQUE NOT NULL,
-        email VARCHAR(100) UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Посттар кестесі
+    -- 1. Посттар кестесі
     CREATE TABLE IF NOT EXISTS posts (
         id SERIAL PRIMARY KEY,
         author_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -22,33 +13,41 @@ const createTablesQuery = `
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Медиа (суреттер) кестесі
+    -- 2. Медиа кестесі
     CREATE TABLE IF NOT EXISTS media (
         id SERIAL PRIMARY KEY,
         post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
         url TEXT NOT NULL
     );
 
-    -- Рефреш токендер кестесі (СІЗДЕГІ ҚАТЕ ОСЫ ЖЕРДЕ БОЛДЫ)
+    -- 3. Рефреш токендер кестесі
     CREATE TABLE IF NOT EXISTS refresh_tokens (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         token TEXT NOT NULL,
+        jti TEXT, 
         expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '30 days')
     );
+
+    -- 4. ЕГЕР КЕСТЕ БАР БОЛСА, БАҒАНДАРДЫ ТЕКСЕРІП ҚОСУ (МАҢЫЗДЫ)
+    DO $$ 
+    BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='refresh_tokens' AND column_name='jti') THEN
+            ALTER TABLE refresh_tokens ADD COLUMN jti TEXT;
+        END IF;
+    END $$;
 `;
 
-// Кестелерді іске қосу
 db.query(createTablesQuery, (err) => {
     if (err) {
-        console.error('Кесте құруда қате шықты:', err.message);
+        console.error('Кесте жаңартуда қате шықты:', err.message);
     } else {
-        console.log('Барлық қажетті кестелер (posts, media, refresh_tokens) дайын.');
+        console.log('Деректер базасы құрылымы толық жаңартылды (jti қосылды).');
     }
 });
 // ---------------------------------------------------
 
-// 1. БАРЛЫҚ ПОСТТАРДЫ АЛУ (ЛЕНТА ҮШІН)
+// ПОСТТАРДЫ АЛУ (GET /posts)
 router.get('/', (req, res, next) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -64,23 +63,18 @@ router.get('/', (req, res, next) => {
 
     db.query(query, [limit, offset], (err, results) => {
         if (err) return next(err);
-        
         const rows = results.rows || [];
-        res.json({
-            page,
-            limit,
-            data: rows
-        });
+        res.json({ page, limit, data: rows });
     });
 });
 
-// 2. ЖАҢА ПОСТ ЖАСАУ (АВТОРИЗАЦИЯ КЕРЕК)
+// ЖАҢА ПОСТ ЖАСАУ (POST /posts)
 router.post('/', authenticateToken, (req, res, next) => {
     const { caption, media_url } = req.body;
-    const author_id = req.user.id; // Токеннен алынған пайдаланушы ID-і
+    const author_id = req.user.id;
 
     if (!media_url) {
-        return res.status(400).json({ error: "Сурет сілтемесі (media_url) міндетті!" });
+        return res.status(400).json({ error: "Сурет сілтемесі (media_url) керек!" });
     }
 
     const postQuery = 'INSERT INTO posts (author_id, caption) VALUES ($1, $2) RETURNING id';
@@ -89,16 +83,11 @@ router.post('/', authenticateToken, (req, res, next) => {
         if (err) return next(err);
         
         const postId = result.rows[0].id;
-
         const mediaQuery = 'INSERT INTO media (post_id, url) VALUES ($1, $2)';
+        
         db.query(mediaQuery, [postId, media_url], (mErr) => {
             if (mErr) return next(mErr);
-            res.status(201).json({ 
-                message: 'Пост пен сурет сәтті жүктелді!', 
-                postId,
-                caption,
-                media_url 
-            });
+            res.status(201).json({ message: 'Пост сәтті салынды!', postId });
         });
     });
 });
