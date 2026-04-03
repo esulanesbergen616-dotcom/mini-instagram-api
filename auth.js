@@ -7,6 +7,7 @@ const router = express.Router();
 const ACCESS_SECRET = 'your_access_secret_key';
 const REFRESH_SECRET = 'your_refresh_secret_key';
 
+// ТІРКЕЛУ (REGISTER)
 router.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
     
@@ -16,7 +17,8 @@ router.post('/register', async (req, res) => {
 
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
-        const query = 'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)';
+        // PostgreSQL үшін $1, $2, $3 қолданылады
+        const query = 'INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3)';
         
         db.query(query, [username, email, hashedPassword], (err, result) => {
             if (err) {
@@ -32,20 +34,25 @@ router.post('/register', async (req, res) => {
     }
 });
 
+// ЛОГИН (LOGIN)
 router.post('/login', (req, res) => {
     const { email, password } = req.body;
 
-    db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
+    // PostgreSQL үшін $1 қолданылады
+    db.query('SELECT * FROM users WHERE email = $1', [email], async (err, results) => {
         if (err) {
             console.error('Логин SQL қатесі:', err.message);
             return res.status(500).json({ error: err.message });
         }
         
-        if (results.length === 0 || !(await bcrypt.compare(password, results[0].password_hash))) {
+        // PostgreSQL-де нәтиже results.rows ішінде болады
+        const users = results.rows || results; 
+        
+        if (!users || users.length === 0 || !(await bcrypt.compare(password, users[0].password_hash))) {
             return res.status(401).json({ message: 'Қате деректер!' });
         }
 
-        const user = results[0];
+        const user = users[0];
         const accessToken = jwt.sign({ id: user.id }, ACCESS_SECRET, { expiresIn: '15m' });
         const refreshToken = jwt.sign({ id: user.id }, REFRESH_SECRET, { expiresIn: '7d' });
         
@@ -53,7 +60,8 @@ router.post('/login', (req, res) => {
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 7);
 
-        db.query('INSERT INTO refresh_tokens (user_id, jti, expires_at) VALUES (?, ?, ?)', 
+        // PostgreSQL үшін $1, $2, $3 қолданылады
+        db.query('INSERT INTO refresh_tokens (user_id, jti, expires_at) VALUES ($1, $2, $3)', 
                  [user.id, jti, expiresAt], (tokenErr) => {
             if (tokenErr) console.error('Токен сақтау қатесі:', tokenErr.message);
         });
