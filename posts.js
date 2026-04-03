@@ -3,41 +3,35 @@ const router = express.Router();
 const db = require('./db');
 const authenticateToken = require('./authMiddleware');
 
-// --- ДЕРЕКТЕР БАЗАСЫ ҚҰРЫЛЫМЫН ЖАҢАРТУ ---
+
 const createTablesQuery = `
-    -- 1. Посттар кестесі
-    CREATE TABLE IF NOT EXISTS posts (
+    -- ЕСКІ КЕСТЕЛЕРДІ ӨШІРУ (БАРЛЫҚ ҚАТЕЛЕРДІ ТАЗАЛАУ ҮШІН)
+    DROP TABLE IF EXISTS refresh_tokens CASCADE;
+    DROP TABLE IF EXISTS media CASCADE;
+    DROP TABLE IF EXISTS posts CASCADE;
+
+    -- КЕСТЕЛЕРДІ ТАЗАДАН ҚҰРУ
+    CREATE TABLE posts (
         id SERIAL PRIMARY KEY,
         author_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         caption TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 2. Медиа кестесі
-    CREATE TABLE IF NOT EXISTS media (
+    CREATE TABLE media (
         id SERIAL PRIMARY KEY,
         post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
         url TEXT NOT NULL
     );
 
-    -- 3. Рефреш токендер кестесі
-    CREATE TABLE IF NOT EXISTS refresh_tokens (
+    CREATE TABLE refresh_tokens (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         token TEXT NOT NULL,
         jti TEXT, 
         expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '30 days')
     );
-
-    -- 4. ЕГЕР КЕСТЕ БАР БОЛСА, БАҒАНДАРДЫ ТЕКСЕРІП ҚОСУ (МАҢЫЗДЫ)
-    DO $$ 
-    BEGIN 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='refresh_tokens' AND column_name='jti') THEN
-            ALTER TABLE refresh_tokens ADD COLUMN jti TEXT;
-        END IF;
-    END $$;
 `;
-
 db.query(createTablesQuery, (err) => {
     if (err) {
         console.error('Кесте жаңартуда қате шықты:', err.message);
